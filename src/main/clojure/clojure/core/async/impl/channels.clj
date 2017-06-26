@@ -29,9 +29,16 @@ clojure.core.async.impl.channels
   (cleanup [_])
   (abort [_]))
 
-(deftype ManyToManyChannel [^LinkedList takes ^LinkedList puts ^Queue buf closed ^Lock mutex add!]
+(deftype ManyToManyChannel [^LinkedList takes               ;; List of pending take requests
+                            ^LinkedList puts                ;; List of pending put requests
+                            ^Queue buf                      ;; Buffer for holding put val's
+                            closed                          ;; Atom for setting closed boolean
+                            ^Lock mutex
+                            add!                            ;; fn to add a val to the buf
+                            ]
   MMC
   (cleanup
+    ;; Remove all entries from takes and puts that are not active.
     [_]
     (when-not (.isEmpty takes)
       (let [iter (.iterator takes)]
@@ -75,14 +82,17 @@ clojure.core.async.impl.channels
           (box false))
       (let [^Lock handler handler]
         (if (and buf (not (impl/full? buf)) (not (.isEmpty takes)))
+          ;; If-Then (there is a buffer, buffer has capacity and there is a taker ready)
           (do
             (.lock handler)
             (let [put-cb (and (impl/active? handler) (impl/commit handler))]
               (.unlock handler)
               (if put-cb
-                (let [done? (reduced? (add! buf val))]
+                (let [done? (reduced? (add! buf val))]      ;; Add the val to the buf
                   (if (pos? (count buf))
                     (let [iter (.iterator takes)
+
+                          ;; Create a seq take callbacks that can be invoked without args.
                           take-cbs (loop [takers []]
                                      (if (and (.hasNext iter) (pos? (count buf)))
                                        (let [^Lock taker (.next iter)]
@@ -92,7 +102,10 @@ clojure.core.async.impl.channels
                                            (if ret
                                              (let [val (impl/remove! buf)]
                                                (.remove iter)
-                                               (recur (conj takers (fn [] (ret val)))))
+                                               (recur (conj
+                                                        takers
+                                                        ;; New fn that will invoke the take fn with the val arg
+                                                        (fn [] (ret val)))))
                                              (recur takers))))
                                        takers))]
                       (if (seq take-cbs)
@@ -101,6 +114,7 @@ clojure.core.async.impl.channels
                             (abort this))
                           (.unlock mutex)
                           (doseq [f take-cbs]
+                            ;; Invoke the take fns on the dispatcher
                             (dispatch/run f)))
                         (do
                           (when done?
@@ -113,7 +127,9 @@ clojure.core.async.impl.channels
                   (box true))
                 (do (.unlock mutex)
                     nil))))
+          ;; If-Else (There is no buffer or no taker)
           (let [iter (.iterator takes)
+                ;; Get a pair of the put and take callbacks.
                 [put-cb take-cb] (when (.hasNext iter)
                                    (loop [^Lock taker (.next iter)]
                                      (if (< (impl/lock-id handler) (impl/lock-id taker))
@@ -130,23 +146,27 @@ clojure.core.async.impl.channels
                                          (when (.hasNext iter)
                                            (recur (.next iter)))))))]
             (if (and put-cb take-cb)
+              ;; If-Then both put and take callbacks are valid. Give the val to the taker.
               (do
                 (.unlock mutex)
                 (dispatch/run (fn [] (take-cb val)))
                 (box true))
+              ;; If-Else take callback is not present. put optionally has a No-Op callback.
               (if (and buf (not (impl/full? buf)))
+                ;; If-Then buf exists and has space.
                 (do
                   (.lock handler)
                   (let [put-cb (and (impl/active? handler) (impl/commit handler))]
                     (.unlock handler)
                     (if put-cb
-                      (let [done? (reduced? (add! buf val))]
+                      (let [done? (reduced? (add! buf val))] ;; Add val to the buffer
                         (when done?
                           (abort this))
                         (.unlock mutex)
                         (box true))
                       (do (.unlock mutex)
                           nil))))
+                ;; If-Else No buffer or is full.
                 (do
                   (when (and (impl/active? handler) (impl/blockable? handler))
                     (assert-unlock mutex
@@ -154,6 +174,7 @@ clojure.core.async.impl.channels
                                    (str "No more than " impl/MAX-QUEUE-SIZE
                                         " pending puts are allowed on a single channel."
                                         " Consider using a windowed buffer."))
+                    ;; Add the put handler and val to the puts list
                     (.add puts [handler val]))
                   (.unlock mutex)
                   nil))))))))
@@ -170,56 +191,64 @@ clojure.core.async.impl.channels
                              (.unlock handler)
                              take-cb))]
       (if (and buf (pos? (count buf)))
+        ;; If-Then There is a buffer and has some elements
         (do
           (if-let [take-cb (commit-handler)]
-            (let [val (impl/remove! buf)
+            (let [val (impl/remove! buf)                    ;; Get a single val from the buffer
                   iter (.iterator puts)
-                  [done? cbs]
-                  (when (.hasNext iter)
-                    (loop [cbs []
-                           [^Lock putter val] (.next iter)]
-                      (.lock putter)
-                      (let [cb (and (impl/active? putter) (impl/commit putter))]
-                        (.unlock putter)
-                        (.remove iter)
-                        (let [cbs (if cb (conj cbs cb) cbs)
-                              done? (when cb (reduced? (add! buf val)))]
-                          (if (and (not done?) (not (impl/full? buf)) (.hasNext iter))
-                            (recur cbs (.next iter))
-                            [done? cbs])))))]
+                  [done? cbs] (when (.hasNext iter)
+                                (loop [cbs []
+                                       [^Lock putter val] (.next iter)]
+                                  (.lock putter)
+                                  (let [cb (and (impl/active? putter) (impl/commit putter))]
+                                    (.unlock putter)
+                                    (.remove iter)
+                                    (let [cbs (if cb (conj cbs cb) cbs)
+                                          ;; Move a callback from the puts list to cbs based
+                                          done? (when cb (reduced? (add! buf val)))]
+                                      (if (and (not done?) (not (impl/full? buf)) (.hasNext iter))
+                                        ;; Recur if the buffer has more capacity
+                                        (recur cbs (.next iter))
+                                        [done? cbs])))))]
               (when done?
                 (abort this))
               (.unlock mutex)
               (doseq [cb cbs]
+                ;; Invoke the puts callbacks that can be run now.
                 (dispatch/run #(cb true)))
               (box val))
             (do (.unlock mutex)
                 nil)))
+        ;; If-Else There is no buffer or it is empty
         (let [iter (.iterator puts)
-              [take-cb put-cb val]
-              (when (.hasNext iter)
-                (loop [[^Lock putter val] (.next iter)]
-                  (if (< (impl/lock-id handler) (impl/lock-id putter))
-                    (do (.lock handler) (.lock putter))
-                    (do (.lock putter) (.lock handler)))
-                  (let [ret (when (and (impl/active? handler) (impl/active? putter))
-                              [(impl/commit handler) (impl/commit putter) val])]
-                    (.unlock handler)
-                    (.unlock putter)
-                    (if ret
-                      (do
-                        (.remove iter)
-                        ret)
-                      (when-not (impl/active? putter)
-                        (.remove iter)
-                        (when (.hasNext iter)
-                          (recur (.next iter))))))))]
+              [take-cb put-cb val] (when (.hasNext iter)
+                                     (loop [[^Lock putter val] (.next iter)]
+                                       (if (< (impl/lock-id handler) (impl/lock-id putter))
+                                         (do (.lock handler) (.lock putter))
+                                         (do (.lock putter) (.lock handler)))
+                                       (let [ret (when (and (impl/active? handler) (impl/active? putter))
+                                                   [(impl/commit handler) (impl/commit putter) val])]
+                                         (.unlock handler)
+                                         (.unlock putter)
+                                         (if ret
+                                           (do
+                                             (.remove iter)
+                                             ret)
+                                           (when-not (impl/active? putter)
+                                             (.remove iter)
+                                             (when (.hasNext iter)
+                                               (recur (.next iter))))))))]
           (if (and put-cb take-cb)
+            ;; If-Then There is a put and take callback.
             (do
               (.unlock mutex)
+              ;; Invoke the put callback
               (dispatch/run #(put-cb true))
+              ;; Return the val to be executed as part of the take callback
               (box val))
+            ;; If-Else put callback is not there. Take always has a callback.
             (if @closed
+              ;; If-Then closed
               (do
                 (when buf (add! buf))
                 (let [has-val (and buf (pos? (count buf)))]
@@ -230,12 +259,14 @@ clojure.core.async.impl.channels
                     (do
                       (.unlock mutex)
                       nil))))
+              ;; If-Else not closed
               (do
                 (when (impl/blockable? handler)
                   (assert-unlock mutex
                                  (< (.size takes) impl/MAX-QUEUE-SIZE)
                                  (str "No more than " impl/MAX-QUEUE-SIZE
                                       " pending takes are allowed on a single channel."))
+                  ;; Add the handler callback function to the takes list
                   (.add takes handler))
                 (.unlock mutex)
                 nil)))))))
@@ -287,16 +318,21 @@ clojure.core.async.impl.channels
   ([buf xform] (chan buf xform nil))
   ([buf xform exh]
    (ManyToManyChannel.
-     (LinkedList.) (LinkedList.) buf (atom false) (mutex/mutex) (let [add! (if xform (xform impl/add!) impl/add!)]
-                                                                  (fn
-                                                                    ([buf]
-                                                                     (try
-                                                                       (add! buf)
-                                                                       (catch Throwable t
-                                                                         (handle buf exh t))))
-                                                                    ([buf val]
-                                                                     (try
-                                                                       (add! buf val)
-                                                                       (catch Throwable t
-                                                                         (handle buf exh t)))))))))
+     (LinkedList.)
+     (LinkedList.)
+     buf
+     (atom false)
+     (mutex/mutex)
+     (let [add! (if xform (xform impl/add!) impl/add!)]
+       (fn
+         ([buf]
+          (try
+            (add! buf)
+            (catch Throwable t
+              (handle buf exh t))))
+         ([buf val]
+          (try
+            (add! buf val)
+            (catch Throwable t
+              (handle buf exh t)))))))))
 

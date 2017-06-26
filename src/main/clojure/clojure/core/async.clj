@@ -33,6 +33,7 @@ the Java system property `clojure.core.async.pool-size`."
 (set! *warn-on-reflection* false)
 
 (defn fn-handler
+  "Wrap a given function with a Lock and Handler interface."
   ([f]
    (fn-handler f true))
   ([f blockable]
@@ -154,7 +155,9 @@ the Java system property `clojure.core.async.pool-size`."
   [port val]
   (assert nil ">! used not in (go ...) block"))
 
+;; No-Op function
 (defn- nop [_])
+;; Wrap No-Op with a handler
 (def ^:private fhnop (fn-handler nop))
 
 (defn put!
@@ -163,19 +166,17 @@ the Java system property `clojure.core.async.pool-size`."
    not allowed. If on-caller? (default true) is true, and the put is
    immediately accepted, will call fn1 on calling thread.  Returns
    true unless port is already closed."
-  ([port val]
-   (if-let [ret (impl/put! port val fhnop)]
-     @ret
-     true))
+  ([port val] (if-let [ret (impl/put! port val fhnop)]
+                @ret
+                true))
   ([port val fn1] (put! port val fn1 true))
-  ([port val fn1 on-caller?]
-   (if-let [retb (impl/put! port val (fn-handler fn1))]
-     (let [ret @retb]
-       (if on-caller?
-         (fn1 ret)
-         (dispatch/run #(fn1 ret)))
-       ret)
-     true)))
+  ([port val fn1 on-caller?] (if-let [retb (impl/put! port val (fn-handler fn1))]
+                               (let [ret @retb]
+                                 (if on-caller?
+                                   (fn1 ret)
+                                   (dispatch/run #(fn1 ret)))
+                                 ret)
+                               true)))
 
 (defn close!
   "Closes a channel. The channel will no longer accept any puts (they

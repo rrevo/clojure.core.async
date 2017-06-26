@@ -187,49 +187,9 @@
 
 
 (deftest ops-tests
-  (testing "map<"
-    (is (= [2 3 4 5]
-           (<!! (a/into [] (a/map< inc (a/to-chan [1 2 3 4])))))))
-  (testing "map>"
-    (is (= [2 3 4 5]
-           (let [out (chan)
-                 in (a/map> inc out)]
-             (a/onto-chan in [1 2 3 4])
-             (<!! (a/into [] out))))))
-  (testing "filter<"
-    (is (= [2 4 6]
-           (<!! (a/into [] (a/filter< even? (a/to-chan [1 2 3 4 5 6])))))))
-  (testing "remove<"
-    (is (= [1 3 5]
-           (<!! (a/into [] (a/remove< even? (a/to-chan [1 2 3 4 5 6])))))))
-
   (testing "onto-chan"
     (is (= (range 10)
            (<!! (a/into [] (a/to-chan (range 10)))))))
-
-  (testing "filter>"
-    (is (= [2 4 6]
-           (let [out (chan)
-                 in (filter> even? out)]
-             (a/onto-chan in [1 2 3 4 5 6])
-             (<!! (a/into [] out))))))
-  (testing "remove>"
-    (is (= [1 3 5]
-           (let [out (chan)
-                 in (remove> even? out)]
-             (a/onto-chan in [1 2 3 4 5 6])
-             (<!! (a/into [] out))))))
-  (testing "mapcat<"
-    (is (= [0 0 1 0 1 2]
-           (<!! (a/into [] (mapcat< range
-                                    (a/to-chan [1 2 3])))))))
-  (testing "mapcat>"
-    (is (= [0 0 1 0 1 2]
-           (let [out (chan)
-                 in (mapcat> range out)]
-             (a/onto-chan in [1 2 3])
-             (<!! (a/into [] out))))))
-
 
   (testing "pipe"
     (is (= [1 2 3 4 5]
@@ -308,17 +268,6 @@
              (<!! (a/into [] a-strs))))
       (is (= ["a" "b" "c"]
              (<!! (a/into [] b-strs))))))
-
-  (testing "unique"
-    (is (= [1 2 3 4]
-           (<!! (a/into [] (a/unique (a/to-chan [1 1 2 2 3 3 3 3 4])))))))
-
-  (testing "partition"
-    (is (= [[1 2] [2 3]]
-           (<!! (a/into [] (a/partition 2 (a/to-chan [1 2 2 3])))))))
-  (testing "partition-by"
-    (is (= [["a" "b"] [1 :2 3] ["c"]]
-           (<!! (a/into [] (a/partition-by string? (a/to-chan ["a" "b" 1 :2 3 "c"])))))))
 
   (testing "reduce"
     (is (= 0 (<!! (a/reduce + 0 (a/to-chan [])))))

@@ -84,9 +84,11 @@ the Java system property `clojure.core.async.pool-size`."
   ([buf-or-n] (chan buf-or-n nil))
   ([buf-or-n xform] (chan buf-or-n xform nil))
   ([buf-or-n xform ex-handler]
-     (when (and buf-or-n (number? buf-or-n)) (assert (pos? buf-or-n) "fixed buffers must have size > 0"))
-     (when xform (assert buf-or-n "buffer must be supplied when transducer is"))
-     (channels/chan (if (number? buf-or-n) (buffer buf-or-n) buf-or-n) xform ex-handler)))
+   (when (and buf-or-n (number? buf-or-n))
+     (assert (pos? buf-or-n) "fixed buffers must have size > 0"))
+   (when xform
+     (assert buf-or-n "buffer must be supplied when transducer is"))
+   (channels/chan (if (number? buf-or-n) (buffer buf-or-n) buf-or-n) xform ex-handler)))
 
 (defn promise-chan
   "Creates a promise channel with an optional transducer, and an optional
@@ -97,7 +99,7 @@ the Java system property `clojure.core.async.pool-size`."
   ([] (promise-chan nil))
   ([xform] (promise-chan xform nil))
   ([xform ex-handler]
-     (chan (buffers/promise-buffer) xform ex-handler)))
+   (chan (buffers/promise-buffer) xform ex-handler)))
 
 (defn timeout
   "Returns a channel that will close after msecs"
@@ -127,13 +129,13 @@ the Java system property `clojure.core.async.pool-size`."
    Returns nil."
   ([port fn1] (take! port fn1 true))
   ([port fn1 on-caller?]
-     (let [ret (impl/take! port (fn-handler fn1))]
-       (when ret
-         (let [val @ret]
-           (if on-caller?
-             (fn1 val)
-             (dispatch/run #(fn1 val)))))
-       nil)))
+   (let [ret (impl/take! port (fn-handler fn1))]
+     (when ret
+       (let [val @ret]
+         (if on-caller?
+           (fn1 val)
+           (dispatch/run #(fn1 val)))))
+     nil)))
 
 (defn >!!
   "puts a val into port. nil values are not allowed. Will block if no
@@ -162,18 +164,18 @@ the Java system property `clojure.core.async.pool-size`."
    immediately accepted, will call fn1 on calling thread.  Returns
    true unless port is already closed."
   ([port val]
-     (if-let [ret (impl/put! port val fhnop)]
-       @ret
-       true))
+   (if-let [ret (impl/put! port val fhnop)]
+     @ret
+     true))
   ([port val fn1] (put! port val fn1 true))
   ([port val fn1 on-caller?]
-     (if-let [retb (impl/put! port val (fn-handler fn1))]
-       (let [ret @retb]
-         (if on-caller?
-           (fn1 ret)
-           (dispatch/run #(fn1 ret)))
-         ret)
-       true)))
+   (if-let [retb (impl/put! port val (fn-handler fn1))]
+     (let [ret @retb]
+       (if on-caller?
+         (fn1 ret)
+         (dispatch/run #(fn1 ret)))
+       ret)
+     true)))
 
 (defn close!
   "Closes a channel. The channel will no longer accept any puts (they
@@ -208,31 +210,31 @@ the Java system property `clojure.core.async.pool-size`."
         flag (atom true)
         id (.incrementAndGet id-gen)]
     (reify
-     Lock
-     (lock [_] (.lock m))
-     (unlock [_] (.unlock m))
+      Lock
+      (lock [_] (.lock m))
+      (unlock [_] (.unlock m))
 
-     impl/Handler
-     (active? [_] @flag)
-     (blockable? [_] true)
-     (lock-id [_] id)
-     (commit [_]
-             (reset! flag nil)
-             true))))
+      impl/Handler
+      (active? [_] @flag)
+      (blockable? [_] true)
+      (lock-id [_] id)
+      (commit [_]
+        (reset! flag nil)
+        true))))
 
 (defn- alt-handler [^Lock flag cb]
   (reify
-     Lock
-     (lock [_] (.lock flag))
-     (unlock [_] (.unlock flag))
+    Lock
+    (lock [_] (.lock flag))
+    (unlock [_] (.unlock flag))
 
-     impl/Handler
-     (active? [_] (impl/active? flag))
-     (blockable? [_] true)
-     (lock-id [_] (impl/lock-id flag))
-     (commit [_]
-             (impl/commit flag)
-             cb)))
+    impl/Handler
+    (active? [_] (impl/active? flag))
+    (blockable? [_] true)
+    (lock-id [_] (impl/lock-id flag))
+    (commit [_]
+      (impl/commit flag)
+      cb)))
 
 (defn do-alts
   "returns derefable [val port] if immediate, nil if enqueued"
@@ -255,13 +257,13 @@ the Java system property `clojure.core.async.pool-size`."
                 (channels/box [@vbox (or wport port)])
                 (recur (inc i))))))]
     (or
-     ret
-     (when (contains? opts :default)
-       (.lock ^Lock flag)
-       (let [got (and (impl/active? flag) (impl/commit flag))]
-         (.unlock ^Lock flag)
-         (when got
-           (channels/box [(:default opts) :default])))))))
+      ret
+      (when (contains? opts :default)
+        (.lock ^Lock flag)
+        (let [got (and (impl/active? flag) (impl/commit flag))]
+          (.unlock ^Lock flag)
+          (when got
+            (channels/box [(:default opts) :default])))))))
 
 (defn alts!!
   "Like alts!, except takes will be made as if by <!!, and puts will
@@ -308,35 +310,35 @@ the Java system property `clojure.core.async.pool-size`."
         clauses (remove opt? clauses)
         [clauses bindings]
         (core/reduce
-         (fn [[clauses bindings] [ports expr]]
-           (let [ports (if (vector? ports) ports [ports])
-                 [ports bindings]
-                 (core/reduce
-                  (fn [[ports bindings] port]
-                    (if (vector? port)
-                      (let [[port val] port
-                            gp (gensym)
-                            gv (gensym)]
-                        [(conj ports [gp gv]) (conj bindings [gp port] [gv val])])
-                      (let [gp (gensym)]
-                        [(conj ports gp) (conj bindings [gp port])])))
-                  [[] bindings] ports)]
-             [(conj clauses [ports expr]) bindings]))
-         [[] []] clauses)
+          (fn [[clauses bindings] [ports expr]]
+            (let [ports (if (vector? ports) ports [ports])
+                  [ports bindings]
+                  (core/reduce
+                    (fn [[ports bindings] port]
+                      (if (vector? port)
+                        (let [[port val] port
+                              gp (gensym)
+                              gv (gensym)]
+                          [(conj ports [gp gv]) (conj bindings [gp port] [gv val])])
+                        (let [gp (gensym)]
+                          [(conj ports gp) (conj bindings [gp port])])))
+                    [[] bindings] ports)]
+              [(conj clauses [ports expr]) bindings]))
+          [[] []] clauses)
         gch (gensym "ch")
         gret (gensym "ret")]
     `(let [~@(mapcat identity bindings)
            [val# ~gch :as ~gret] (~alts [~@(apply concat (core/map first clauses))] ~@(apply concat opts))]
        (cond
-        ~@(mapcat (fn [[ports expr]]
-                    [`(or ~@(core/map (fn [port]
-                                   `(= ~gch ~(if (vector? port) (first port) port)))
-                                 ports))
-                     (if (and (seq? expr) (vector? (first expr)))
-                       `(let [~(first expr) ~gret] ~@(rest expr))
-                       expr)])
-                  clauses)
-        (= ~gch :default) val#))))
+         ~@(mapcat (fn [[ports expr]]
+                     [`(or ~@(core/map (fn [port]
+                                         `(= ~gch ~(if (vector? port) (first port) port)))
+                                       ports))
+                      (if (and (seq? expr) (vector? (first expr)))
+                        `(let [~(first expr) ~gret] ~@(rest expr))
+                        expr)])
+                   clauses)
+         (= ~gch :default) val#))))
 
 (defmacro alt!!
   "Like alt!, except as if by alts!!, will block until completed, and
@@ -417,16 +419,16 @@ the Java system property `clojure.core.async.pool-size`."
            captured-bindings# (clojure.lang.Var/getThreadBindingFrame)]
        (dispatch/run
          (^:once fn* []
-          (let [~@(mapcat (fn [[l sym]] [sym `(^:once fn* [] ~(vary-meta l dissoc :tag))]) crossing-env)
-                f# ~(ioc/state-machine `(do ~@body) 1 [crossing-env &env] ioc/async-custom-terminators)
-                state# (-> (f#)
-                           (ioc/aset-all! ioc/USER-START-IDX c#
-                                          ioc/BINDINGS-IDX captured-bindings#))]
-            (ioc/run-state-machine-wrapped state#))))
+           (let [~@(mapcat (fn [[l sym]] [sym `(^:once fn* [] ~(vary-meta l dissoc :tag))]) crossing-env)
+                 f# ~(ioc/state-machine `(do ~@body) 1 [crossing-env &env] ioc/async-custom-terminators)
+                 state# (-> (f#)
+                            (ioc/aset-all! ioc/USER-START-IDX c#
+                                           ioc/BINDINGS-IDX captured-bindings#))]
+             (ioc/run-state-machine-wrapped state#))))
        c#)))
 
 (defonce ^:private ^Executor thread-macro-executor
-  (Executors/newCachedThreadPool (conc/counted-thread-factory "async-thread-macro-%d" true)))
+         (Executors/newCachedThreadPool (conc/counted-thread-factory "async-thread-macro-%d" true)))
 
 (defn thread-call
   "Executes f in another thread, returning immediately to the calling
@@ -467,71 +469,71 @@ the Java system property `clojure.core.async.pool-size`."
   stop consuming the from channel if the to channel closes"
   ([from to] (pipe from to true))
   ([from to close?]
-     (go-loop []
-      (let [v (<! from)]
-        (if (nil? v)
-          (when close? (close! to))
-          (when (>! to v)
-            (recur)))))
-     to))
+   (go-loop []
+     (let [v (<! from)]
+       (if (nil? v)
+         (when close? (close! to))
+         (when (>! to v)
+           (recur)))))
+   to))
 
 (defn- pipeline*
   ([n to xf from close? ex-handler type]
-     (assert (pos? n))
-     (let [ex-handler (or ex-handler (fn [ex]
-                                       (-> (Thread/currentThread)
-                                           .getUncaughtExceptionHandler
-                                           (.uncaughtException (Thread/currentThread) ex))
-                                       nil))
-           jobs (chan n)
-           results (chan n)
-           process (fn [[v p :as job]]
-                     (if (nil? job)
-                       (do (close! results) nil)
-                       (let [res (chan 1 xf ex-handler)]
-                         (>!! res v)
-                         (close! res)
-                         (put! p res)
-                         true)))
-           async (fn [[v p :as job]]
+   (assert (pos? n))
+   (let [ex-handler (or ex-handler (fn [ex]
+                                     (-> (Thread/currentThread)
+                                         .getUncaughtExceptionHandler
+                                         (.uncaughtException (Thread/currentThread) ex))
+                                     nil))
+         jobs (chan n)
+         results (chan n)
+         process (fn [[v p :as job]]
                    (if (nil? job)
                      (do (close! results) nil)
-                     (let [res (chan 1)]
-                       (xf v res)
+                     (let [res (chan 1 xf ex-handler)]
+                       (>!! res v)
+                       (close! res)
                        (put! p res)
-                       true)))]
-       (dotimes [_ n]
-         (case type
-               :blocking (thread
-                          (let [job (<!! jobs)]
-                            (when (process job)
-                              (recur))))
-               :compute (go-loop []
-                                   (let [job (<! jobs)]
-                                     (when (process job)
-                                       (recur))))
-               :async (go-loop []
-                                 (let [job (<! jobs)]
-                                   (when (async job)
-                                     (recur))))))
-       (go-loop []
-                  (let [v (<! from)]
-                    (if (nil? v)
-                      (close! jobs)
-                      (let [p (chan 1)]
-                        (>! jobs [v p])
-                        (>! results p)
-                        (recur)))))
-       (go-loop []
-                  (let [p (<! results)]
-                    (if (nil? p)
-                      (when close? (close! to))
-                      (let [res (<! p)]
-                        (loop []
-                          (let [v (<! res)]
-                            (when (and (not (nil? v)) (>! to v))
-                              (recur))))
-                        (recur))))))))
+                       true)))
+         async (fn [[v p :as job]]
+                 (if (nil? job)
+                   (do (close! results) nil)
+                   (let [res (chan 1)]
+                     (xf v res)
+                     (put! p res)
+                     true)))]
+     (dotimes [_ n]
+       (case type
+         :blocking (thread
+                     (let [job (<!! jobs)]
+                       (when (process job)
+                         (recur))))
+         :compute (go-loop []
+                    (let [job (<! jobs)]
+                      (when (process job)
+                        (recur))))
+         :async (go-loop []
+                  (let [job (<! jobs)]
+                    (when (async job)
+                      (recur))))))
+     (go-loop []
+       (let [v (<! from)]
+         (if (nil? v)
+           (close! jobs)
+           (let [p (chan 1)]
+             (>! jobs [v p])
+             (>! results p)
+             (recur)))))
+     (go-loop []
+       (let [p (<! results)]
+         (if (nil? p)
+           (when close? (close! to))
+           (let [res (<! p)]
+             (loop []
+               (let [v (<! res)]
+                 (when (and (not (nil? v)) (>! to v))
+                   (recur))))
+             (recur))))))))
 
 ;;todo - switch pipe arg order to match these (to/from)
 (defn pipeline
@@ -584,15 +586,15 @@ the Java system property `clojure.core.async.pool-size`."
   closed."
   ([p ch] (split p ch nil nil))
   ([p ch t-buf-or-n f-buf-or-n]
-     (let [tc (chan t-buf-or-n)
-           fc (chan f-buf-or-n)]
-       (go-loop []
-         (let [v (<! ch)]
-           (if (nil? v)
-             (do (close! tc) (close! fc))
-             (when (>! (if (p v) tc fc) v)
-               (recur)))))
-       [tc fc])))
+   (let [tc (chan t-buf-or-n)
+         fc (chan f-buf-or-n)]
+     (go-loop []
+       (let [v (<! ch)]
+         (if (nil? v)
+           (do (close! tc) (close! fc))
+           (when (>! (if (p v) tc fc) v)
+             (recur)))))
+     [tc fc])))
 
 (defn reduce
   "f should be a function of 2 arguments. Returns a channel containing
@@ -617,8 +619,8 @@ the Java system property `clojure.core.async.pool-size`."
   [xform f init ch]
   (let [f (xform f)]
     (go
-     (let [ret (<! (reduce f init ch))]
-       (f ret)))))
+      (let [ret (<! (reduce f init ch))]
+        (f ret)))))
 
 (defn- bounded-count
   "Returns the smaller of n or the count of coll, without examining
@@ -640,11 +642,11 @@ the Java system property `clojure.core.async.pool-size`."
   Returns a channel which will close after the items are copied."
   ([ch coll] (onto-chan ch coll true))
   ([ch coll close?]
-     (go-loop [vs (seq coll)]
-              (if (and vs (>! ch (first vs)))
-                (recur (next vs))
-                (when close?
-                  (close! ch))))))
+   (go-loop [vs (seq coll)]
+     (if (and vs (>! ch (first vs)))
+       (recur (next vs))
+       (when close?
+         (close! ch))))))
 
 (defn to-chan
   "Creates and returns a channel which contains the contents of coll,
@@ -680,34 +682,34 @@ the Java system property `clojure.core.async.pool-size`."
 
   If a tap puts to a closed channel, it will be removed from the mult."
   [ch]
-  (let [cs (atom {}) ;;ch->close?
+  (let [cs (atom {})                                        ;;ch->close?
         m (reify
-           Mux
-           (muxch* [_] ch)
+            Mux
+            (muxch* [_] ch)
 
-           Mult
-           (tap* [_ ch close?] (swap! cs assoc ch close?) nil)
-           (untap* [_ ch] (swap! cs dissoc ch) nil)
-           (untap-all* [_] (reset! cs {}) nil))
+            Mult
+            (tap* [_ ch close?] (swap! cs assoc ch close?) nil)
+            (untap* [_ ch] (swap! cs dissoc ch) nil)
+            (untap-all* [_] (reset! cs {}) nil))
         dchan (chan 1)
         dctr (atom nil)
         done (fn [_] (when (zero? (swap! dctr dec))
-                      (put! dchan true)))]
+                       (put! dchan true)))]
     (go-loop []
-     (let [val (<! ch)]
-       (if (nil? val)
-         (doseq [[c close?] @cs]
-           (when close? (close! c)))
-         (let [chs (keys @cs)]
-           (reset! dctr (count chs))
-           (doseq [c chs]
-             (when-not (put! c val done)
-               (done nil)
-               (untap* m c)))
-           ;;wait for all
-           (when (seq chs)
-             (<! dchan))
-           (recur)))))
+      (let [val (<! ch)]
+        (if (nil? val)
+          (doseq [[c close?] @cs]
+            (when close? (close! c)))
+          (let [chs (keys @cs)]
+            (reset! dctr (count chs))
+            (doseq [c chs]
+              (when-not (put! c val done)
+                (done nil)
+                (untap* m c)))
+            ;;wait for all
+            (when (seq chs)
+              (<! dchan))
+            (recur)))))
     m))
 
 (defn tap
@@ -754,7 +756,7 @@ the Java system property `clojure.core.async.pool-size`."
   :pause - paused channels will not have their contents consumed (and thus also not included in the mix)
 "
   [out]
-  (let [cs (atom {}) ;;ch->attrs-map
+  (let [cs (atom {})                                        ;;ch->attrs-map
         solo-modes #{:mute :pause}
         attrs (conj solo-modes :solo)
         solo-mode (atom :mute)
@@ -762,11 +764,11 @@ the Java system property `clojure.core.async.pool-size`."
         changed #(put! change true)
         pick (fn [attr chs]
                (reduce-kv
-                   (fn [ret c v]
-                     (if (attr v)
-                       (conj ret c)
-                       ret))
-                   #{} chs))
+                 (fn [ret c v]
+                   (if (attr v)
+                     (conj ret c)
+                     ret))
+                 #{} chs))
         calc-state (fn []
                      (let [chs @cs
                            mode @solo-mode
@@ -775,22 +777,22 @@ the Java system property `clojure.core.async.pool-size`."
                        {:solos solos
                         :mutes (pick :mute chs)
                         :reads (conj
-                                (if (and (= mode :pause) (not (empty? solos)))
-                                  (vec solos)
-                                  (vec (remove pauses (keys chs))))
-                                change)}))
+                                 (if (and (= mode :pause) (not (empty? solos)))
+                                   (vec solos)
+                                   (vec (remove pauses (keys chs))))
+                                 change)}))
         m (reify
-           Mux
-           (muxch* [_] out)
-           Mix
-           (admix* [_ ch] (swap! cs assoc ch {}) (changed))
-           (unmix* [_ ch] (swap! cs dissoc ch) (changed))
-           (unmix-all* [_] (reset! cs {}) (changed))
-           (toggle* [_ state-map] (swap! cs (partial merge-with core/merge) state-map) (changed))
-           (solo-mode* [_ mode]
-             (assert (solo-modes mode) (str "mode must be one of: " solo-modes))
-             (reset! solo-mode mode)
-             (changed)))]
+            Mux
+            (muxch* [_] out)
+            Mix
+            (admix* [_ ch] (swap! cs assoc ch {}) (changed))
+            (unmix* [_ ch] (swap! cs dissoc ch) (changed))
+            (unmix-all* [_] (reset! cs {}) (changed))
+            (toggle* [_ state-map] (swap! cs (partial merge-with core/merge) state-map) (changed))
+            (solo-mode* [_ mode]
+              (assert (solo-modes mode) (str "mode must be one of: " solo-modes))
+              (reset! solo-mode mode)
+              (changed)))]
     (go-loop [{:keys [solos mutes reads] :as state} (calc-state)]
       (let [[v c] (alts! reads)]
         (if (or (nil? v) (= c change))
@@ -864,37 +866,37 @@ the Java system property `clojure.core.async.pool-size`."
   the source."
   ([ch topic-fn] (pub ch topic-fn (constantly nil)))
   ([ch topic-fn buf-fn]
-     (let [mults (atom {}) ;;topic->mult
-           ensure-mult (fn [topic]
-                         (or (get @mults topic)
-                             (get (swap! mults
-                                         #(if (% topic) % (assoc % topic (mult (chan (buf-fn topic))))))
-                                  topic)))
-           p (reify
-              Mux
-              (muxch* [_] ch)
+   (let [mults (atom {})                                    ;;topic->mult
+         ensure-mult (fn [topic]
+                       (or (get @mults topic)
+                           (get (swap! mults
+                                       #(if (% topic) % (assoc % topic (mult (chan (buf-fn topic))))))
+                                topic)))
+         p (reify
+             Mux
+             (muxch* [_] ch)
 
-              Pub
-              (sub* [p topic ch close?]
-                    (let [m (ensure-mult topic)]
-                      (tap m ch close?)))
-              (unsub* [p topic ch]
-                      (when-let [m (get @mults topic)]
-                        (untap m ch)))
-              (unsub-all* [_] (reset! mults {}))
-              (unsub-all* [_ topic] (swap! mults dissoc topic)))]
-       (go-loop []
-         (let [val (<! ch)]
-           (if (nil? val)
-             (doseq [m (vals @mults)]
-               (close! (muxch* m)))
-             (let [topic (topic-fn val)
-                   m (get @mults topic)]
-               (when m
-                 (when-not (>! (muxch* m) val)
-                   (swap! mults dissoc topic)))
-               (recur)))))
-       p)))
+             Pub
+             (sub* [p topic ch close?]
+               (let [m (ensure-mult topic)]
+                 (tap m ch close?)))
+             (unsub* [p topic ch]
+               (when-let [m (get @mults topic)]
+                 (untap m ch)))
+             (unsub-all* [_] (reset! mults {}))
+             (unsub-all* [_ topic] (swap! mults dissoc topic)))]
+     (go-loop []
+       (let [val (<! ch)]
+         (if (nil? val)
+           (doseq [m (vals @mults)]
+             (close! (muxch* m)))
+           (let [topic (topic-fn val)
+                 m (get @mults topic)]
+             (when m
+               (when-not (>! (muxch* m) val)
+                 (swap! mults dissoc topic)))
+             (recur)))))
+     p)))
 
 (defn sub
   "Subscribes a channel to a topic of a pub.
@@ -926,31 +928,31 @@ the Java system property `clojure.core.async.pool-size`."
   buf-or-n can be supplied"
   ([f chs] (map f chs nil))
   ([f chs buf-or-n]
-     (let [chs (vec chs)
-           out (chan buf-or-n)
-           cnt (count chs)
-           rets (object-array cnt)
-           dchan (chan 1)
-           dctr (atom nil)
-           done (mapv (fn [i]
-                         (fn [ret]
-                           (aset rets i ret)
-                           (when (zero? (swap! dctr dec))
-                             (put! dchan (java.util.Arrays/copyOf rets cnt)))))
-                       (range cnt))]
-       (go-loop []
-         (reset! dctr cnt)
-         (dotimes [i cnt]
-           (try
-             (take! (chs i) (done i))
-             (catch Exception e
-               (swap! dctr dec))))
-         (let [rets (<! dchan)]
-           (if (some nil? rets)
-             (close! out)
-             (do (>! out (apply f rets))
-                 (recur)))))
-       out)))
+   (let [chs (vec chs)
+         out (chan buf-or-n)
+         cnt (count chs)
+         rets (object-array cnt)
+         dchan (chan 1)
+         dctr (atom nil)
+         done (mapv (fn [i]
+                      (fn [ret]
+                        (aset rets i ret)
+                        (when (zero? (swap! dctr dec))
+                          (put! dchan (java.util.Arrays/copyOf rets cnt)))))
+                    (range cnt))]
+     (go-loop []
+       (reset! dctr cnt)
+       (dotimes [i cnt]
+         (try
+           (take! (chs i) (done i))
+           (catch Exception e
+             (swap! dctr dec))))
+       (let [rets (<! dchan)]
+         (if (some nil? rets)
+           (close! out)
+           (do (>! out (apply f rets))
+               (recur)))))
+     out)))
 
 (defn merge
   "Takes a collection of source channels and returns a channel which
@@ -959,16 +961,16 @@ the Java system property `clojure.core.async.pool-size`."
   will close after all the source channels have closed."
   ([chs] (merge chs nil))
   ([chs buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go-loop [cs (vec chs)]
-         (if (pos? (count cs))
-           (let [[v c] (alts! cs)]
-             (if (nil? v)
-               (recur (filterv #(not= c %) cs))
-               (do (>! out v)
-                   (recur cs))))
-           (close! out)))
-       out)))
+   (let [out (chan buf-or-n)]
+     (go-loop [cs (vec chs)]
+       (if (pos? (count cs))
+         (let [[v c] (alts! cs)]
+           (if (nil? v)
+             (recur (filterv #(not= c %) cs))
+             (do (>! out v)
+                 (recur cs))))
+         (close! out)))
+     out)))
 
 (defn into
   "Returns a channel containing the single (collection) result of the
@@ -984,204 +986,14 @@ the Java system property `clojure.core.async.pool-size`."
 
   The output channel is unbuffered by default, unless buf-or-n is given."
   ([n ch]
-     (take n ch nil))
+   (take n ch nil))
   ([n ch buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go (loop [x 0]
-             (when (< x n)
-               (let [v (<! ch)]
-                 (when (not (nil? v))
-                   (>! out v)
-                   (recur (inc x))))))
-           (close! out))
-       out)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;; deprecated - do not use ;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn map<
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  [f ch]
-  (reify
-   impl/Channel
-   (close! [_] (impl/close! ch))
-   (closed? [_] (impl/closed? ch))
-
-   impl/ReadPort
-   (take! [_ fn1]
-     (let [ret
-       (impl/take! ch
-         (reify
-          Lock
-          (lock [_] (.lock ^Lock fn1))
-          (unlock [_] (.unlock ^Lock fn1))
-
-          impl/Handler
-          (active? [_] (impl/active? fn1))
-          (blockable? [_] true)
-          (lock-id [_] (impl/lock-id fn1))
-          (commit [_]
-           (let [f1 (impl/commit fn1)]
-             #(f1 (if (nil? %) nil (f %)))))))]
-       (if (and ret (not (nil? @ret)))
-         (channels/box (f @ret))
-         ret)))
-
-   impl/WritePort
-   (put! [_ val fn1] (impl/put! ch val fn1))))
-
-(defn map>
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  [f ch]
-  (reify
-   impl/Channel
-   (close! [_] (impl/close! ch))
-   (closed? [_] (impl/closed? ch))
-
-   impl/ReadPort
-   (take! [_ fn1] (impl/take! ch fn1))
-
-   impl/WritePort
-   (put! [_ val fn1]
-    (impl/put! ch (f val) fn1))))
-
-(defn filter>
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  [p ch]
-  (reify
-   impl/Channel
-   (close! [_] (impl/close! ch))
-   (closed? [_] (impl/closed? ch))
-
-   impl/ReadPort
-   (take! [_ fn1] (impl/take! ch fn1))
-
-   impl/WritePort
-   (put! [_ val fn1]
-    (if (p val)
-      (impl/put! ch val fn1)
-      (channels/box (not (impl/closed? ch)))))))
-
-(defn remove>
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  [p ch]
-  (filter> (complement p) ch))
-
-(defn filter<
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([p ch] (filter< p ch nil))
-  ([p ch buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go-loop []
-         (let [val (<! ch)]
-           (if (nil? val)
-             (close! out)
-             (do (when (p val)
-                   (>! out val))
-                 (recur)))))
-       out)))
-
-(defn remove<
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([p ch] (remove< p ch nil))
-  ([p ch buf-or-n] (filter< (complement p) ch buf-or-n)))
-
-(defn- mapcat* [f in out]
-  (go-loop []
-    (let [val (<! in)]
-      (if (nil? val)
-        (close! out)
-        (do (doseq [v (f val)]
-              (>! out v))
-            (when-not (impl/closed? out)
-              (recur)))))))
-
-(defn mapcat<
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([f in] (mapcat< f in nil))
-  ([f in buf-or-n]
-    (let [out (chan buf-or-n)]
-      (mapcat* f in out)
-      out)))
-
-(defn mapcat>
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([f out] (mapcat> f out nil))
-  ([f out buf-or-n]
-     (let [in (chan buf-or-n)]
-       (mapcat* f in out)
-       in)))
-
-(defn unique
- "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([ch]
-     (unique ch nil))
-  ([ch buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go (loop [last nil]
+   (let [out (chan buf-or-n)]
+     (go (loop [x 0]
+           (when (< x n)
              (let [v (<! ch)]
                (when (not (nil? v))
-                 (if (= v last)
-                   (recur last)
-                   (do (>! out v)
-                       (recur v))))))
-           (close! out))
-       out)))
-
-
-(defn partition
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([n ch]
-     (partition n ch nil))
-  ([n ch buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go  (loop [arr (make-array Object n)
-                   idx 0]
-              (let [v (<! ch)]
-                (if (not (nil? v))
-                  (do (aset ^objects arr idx v)
-                      (let [new-idx (inc idx)]
-                        (if (< new-idx n)
-                          (recur arr new-idx)
-                          (do (>! out (vec arr))
-                              (recur (make-array Object n) 0)))))
-                  (do (when (> idx 0)
-                        (let [narray (make-array Object idx)]
-                          (System/arraycopy arr 0 narray 0 idx)
-                          (>! out (vec narray))))
-                      (close! out))))))
-       out)))
-
-
-(defn partition-by
-  "Deprecated - this function will be removed. Use transducer instead"
-  {:deprecated "0.1.319.0-6b1aca-alpha"}
-  ([f ch]
-     (partition-by f ch nil))
-  ([f ch buf-or-n]
-     (let [out (chan buf-or-n)]
-       (go (loop [lst (ArrayList.)
-                  last ::nothing]
-             (let [v (<! ch)]
-               (if (not (nil? v))
-                 (let [new-itm (f v)]
-                   (if (or (= new-itm last)
-                           (identical? last ::nothing))
-                     (do (.add ^ArrayList lst v)
-                         (recur lst new-itm))
-                     (do (>! out (vec lst))
-                         (let [new-lst (ArrayList.)]
-                           (.add ^ArrayList new-lst v)
-                           (recur new-lst new-itm)))))
-                 (do (when (> (.size ^ArrayList lst) 0)
-                       (>! out (vec lst)))
-                     (close! out))))))
-       out)))
+                 (>! out v)
+                 (recur (inc x))))))
+         (close! out))
+     out)))
